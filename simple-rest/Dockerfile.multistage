@@ -3,7 +3,7 @@
 # Build the app from source
 FROM golang:1.24.6 AS build-stage
 
-WORKDIR /simple-test
+WORKDIR /simple-rest
 
 COPY go.mod ./
 RUN go mod download
