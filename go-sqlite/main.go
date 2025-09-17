@@ -11,15 +11,14 @@ import (
 )
 
 type Note struct {
-	ID int		`json:"id"`
-	Title string `json:"string"`
-	Description string	`json:"string"`
-	Body string		`json:"string"`
+	ID 		int		`json:"id"`
+	Title 	string `json:"title"`
+	Content string		`json:"content"`
 }
 
-func addNotes(db *sql.DB, Title, Description, Body string) error {
-	query := `INSERT INTO notes (title, description, body) VALUES (?, ?, ?)`
-	_, err := db.Exec(query, Title, Description, Body)
+func addNotes(db *sql.DB, Title, Content string) error {
+	query := `INSERT INTO notes (title, content) VALUES (?, ?)`
+	_, err := db.Exec(query, Title, Content)
 	if err != nil {
 		return fmt.Errorf("execute insert: %w", err)
 	}
@@ -27,7 +26,7 @@ func addNotes(db *sql.DB, Title, Description, Body string) error {
 }
 
 func getNotes(db *sql.DB) ([]Note, error) {
-	query := `SELECT id, title, description, body FROM notes`
+	query := `SELECT id, title, content FROM notes`
 	rows, err := db.Query(query)
 	if err != nil {
 		return nil, fmt.Errorf("query error: %w", err)
@@ -37,7 +36,7 @@ func getNotes(db *sql.DB) ([]Note, error) {
 	var notes []Note
 	for rows.Next() {
 		var n Note
-		if err := rows.Scan(&n.ID, &n.Title, &n.Description, &n.Body); err != nil {
+		if err := rows.Scan(&n.ID, &n.Title, &n.Content); err != nil {
 			return nil, fmt.Errorf("scan error: %w", err)
 		}
 		notes = append(notes, n)
@@ -46,8 +45,8 @@ func getNotes(db *sql.DB) ([]Note, error) {
 }
 
 // add note handler
-func addNoteHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodPost {
+func addNoteHandler(db *sql.DB, w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -55,29 +54,32 @@ func addNoteHandler(w http.ResponseWriter, r *http.Request) {
 	var n Note
 	if err := json.NewDecoder(r.Body).Decode(&n); err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
 	}
 
 	if n.Title == "" {
 		http.Error(w, "title is required", http.StatusBadRequest)
+		return
 	}
 
-	err := addNotes(n.Title, n.Description, n.Body)
+	err := addNotes(db, n.Title, n.Content)
 	if err != nil {
 		http.Error(w, "failed to insert note", http.StatusInternalServerError)
+		return
 	}
 
 	w.WriteHeader(http.StatusCreated)
-	fmt.Println(w, "Note added successfully")
+	fmt.Fprintln(w, "Note added successfully")
 }
 
 // get notes handler
-func getNotesHandler(w http.ResponseWriter, r *http.Request) {
+func getNotesHandler(db *sql.DB, w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	notes, err := getNotes()
+	notes, err := getNotes(db)
 	if err != nil {
 		http.Error(w, "failed to fetch notes", http.StatusInternalServerError)
 		return
@@ -100,9 +102,10 @@ func main() {
 	CREATE TABLE IF NOT EXISTS notes (
 		id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
 		title TEXT,
-		content TEXT,
+		content TEXT
 	);
 	`
+	fmt.Println("Creating a table with sql: \n", sqlStmt)
 	_, err = db.Exec(sqlStmt)
 	if err != nil {
 		log.Fatal("Error creating the table", err)
@@ -110,9 +113,9 @@ func main() {
 
 	http.HandleFunc("/notes", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodPost {
-			addNoteHandler(w, r)
+			addNoteHandler(db, w, r)
 		} else if r.Method == http.MethodGet {
-			getNotesHandler(w, r)
+			getNotesHandler(db, w, r)
 		} else {
 			http.Error(w, "Invalid method", http.StatusMethodNotAllowed)
 		}
@@ -120,6 +123,4 @@ func main() {
 
 	fmt.Println("server running on http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
-
-
 }
